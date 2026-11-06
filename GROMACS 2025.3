@@ -1,0 +1,449 @@
+# GROMACS 2025.3 – Molecular Dynamics Simulation
+
+## Description
+
+GROMACS is a molecular dynamics simulation package used to investigate the structural stability and dynamic behavior of biomolecular systems.
+
+GROMACS 2025.3 was used to perform a 100 ns molecular dynamics simulation of the vaccine–TLR4 complex.
+
+## 1. Installation and Version Check
+
+```bash
+gmx --version
+```
+
+Confirm that the installed version is GROMACS 2025.3.
+
+## 2. Input Preparation
+
+Prepare the docked protein complex in PDB format.
+
+```bash
+mkdir -p GROMACS_Project/{Input,Simulation,Analysis}
+```
+
+Place the structure in:
+
+```text
+GROMACS_Project/
+├── Input/
+│   └── complex.pdb
+├── Simulation/
+└── Analysis/
+```
+
+## 3. Generate Protein Topology
+
+```bash
+cd GROMACS_Project/Simulation
+
+gmx pdb2gmx \
+-f ../Input/complex.pdb \
+-o processed.gro \
+-p topol.top \
+-ff gromos54a7 \
+-water tip3p
+```
+
+Select the appropriate protonation states and termini when prompted. The selected water model must be supported by the installed force-field files.
+
+## 4. Define the Simulation Box
+
+A cubic box with a minimum solute-to-edge distance of 15 Å:
+
+```bash
+gmx editconf \
+-f processed.gro \
+-o boxed.gro \
+-c \
+-d 1.5 \
+-bt cubic
+```
+
+## 5. Solvate the System
+
+Use a solvent coordinate file compatible with the selected water model.
+
+```bash
+gmx solvate \
+-cp boxed.gro \
+-cs spc216.gro \
+-o solvated.gro \
+-p topol.top
+```
+
+## 6. Energy Minimization Parameter File
+
+Create:
+
+```bash
+nano em.mdp
+```
+
+```ini
+integrator      = steep
+emtol           = 1000.0
+emstep          = 0.01
+nsteps          = 5000
+
+cutoff-scheme   = Verlet
+nstlist         = 10
+rlist           = 0.9
+
+coulombtype     = PME
+rcoulomb        = 0.9
+
+vdwtype         = Cut-off
+rvdw            = 0.9
+
+pbc             = xyz
+```
+
+## 7. Add Ions
+
+Generate the input file:
+
+```bash
+gmx grompp \
+-f em.mdp \
+-c solvated.gro \
+-p topol.top \
+-o ions.tpr
+```
+
+Add 0.15 M NaCl and neutralize the system:
+
+```bash
+gmx genion \
+-s ions.tpr \
+-o solv_ions.gro \
+-p topol.top \
+-pname NA \
+-nname CL \
+-conc 0.15 \
+-neutral
+```
+
+Select the `SOL` group when prompted.
+
+## 8. Energy Minimization
+
+```bash
+gmx grompp \
+-f em.mdp \
+-c solv_ions.gro \
+-p topol.top \
+-o em.tpr
+
+gmx mdrun -deffnm em
+```
+
+Extract potential energy:
+
+```bash
+gmx energy \
+-f em.edr \
+-o potential_energy.xvg
+```
+
+Select `Potential` when prompted.
+
+## 9. NVT Equilibration
+
+Create:
+
+```bash
+nano nvt.mdp
+```
+
+```ini
+define                  = -DPOSRES
+integrator              = md
+dt                      = 0.002
+nsteps                  = 50000
+
+nstxout-compressed      = 500
+nstenergy               = 500
+nstlog                  = 500
+
+cutoff-scheme           = Verlet
+nstlist                 = 20
+rlist                   = 0.9
+
+coulombtype             = PME
+rcoulomb                = 0.9
+
+vdwtype                 = Cut-off
+rvdw                    = 0.9
+
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau-t                   = 1.0
+ref-t                   = 300
+
+pcoupl                  = no
+
+constraints             = h-bonds
+constraint-algorithm    = lincs
+
+pbc                     = xyz
+
+gen-vel                 = yes
+gen-temp                = 300
+gen-seed                = -1
+```
+
+Generate and run:
+
+```bash
+gmx grompp \
+-f nvt.mdp \
+-c em.gro \
+-r em.gro \
+-p topol.top \
+-o nvt.tpr
+
+gmx mdrun -deffnm nvt
+```
+
+Extract temperature:
+
+```bash
+gmx energy \
+-f nvt.edr \
+-o temperature.xvg
+```
+
+Select `Temperature` when prompted.
+
+## 10. NPT Equilibration
+
+Create:
+
+```bash
+nano npt.mdp
+```
+
+```ini
+define                  = -DPOSRES
+integrator              = md
+dt                      = 0.002
+nsteps                  = 50000
+
+nstxout-compressed      = 500
+nstenergy               = 500
+nstlog                  = 500
+
+cutoff-scheme           = Verlet
+nstlist                 = 20
+rlist                   = 0.9
+
+coulombtype             = PME
+rcoulomb                = 0.9
+
+vdwtype                 = Cut-off
+rvdw                    = 0.9
+
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau-t                   = 1.0
+ref-t                   = 300
+
+pcoupl                  = C-rescale
+pcoupltype              = isotropic
+tau-p                   = 5.0
+ref-p                   = 1.0
+compressibility         = 4.5e-5
+
+constraints             = h-bonds
+constraint-algorithm    = lincs
+
+refcoord-scaling        = com
+
+pbc                     = xyz
+
+continuation            = yes
+gen-vel                 = no
+```
+
+Generate and run:
+
+```bash
+gmx grompp \
+-f npt.mdp \
+-c nvt.gro \
+-r nvt.gro \
+-t nvt.cpt \
+-p topol.top \
+-o npt.tpr
+
+gmx mdrun -deffnm npt
+```
+
+Extract pressure:
+
+```bash
+gmx energy \
+-f npt.edr \
+-o pressure.xvg
+```
+
+Extract density:
+
+```bash
+gmx energy \
+-f npt.edr \
+-o density.xvg
+```
+
+Select the corresponding energy terms when prompted.
+
+## 11. Production Molecular Dynamics Simulation
+
+Create:
+
+```bash
+nano md.mdp
+```
+
+```ini
+integrator              = md
+dt                      = 0.002
+nsteps                  = 50000000
+
+nstxout-compressed      = 500
+nstenergy               = 5000
+nstlog                  = 5000
+
+cutoff-scheme           = Verlet
+nstlist                 = 20
+rlist                   = 0.9
+
+coulombtype             = PME
+rcoulomb                = 0.9
+
+vdwtype                 = Cut-off
+rvdw                    = 0.9
+
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau-t                   = 1.0
+ref-t                   = 300
+
+pcoupl                  = C-rescale
+pcoupltype              = isotropic
+tau-p                   = 5.0
+ref-p                   = 1.0
+compressibility         = 4.5e-5
+
+constraints             = h-bonds
+constraint-algorithm    = lincs
+lincs-iter              = 1
+lincs-order             = 4
+
+pbc                     = xyz
+
+continuation            = yes
+gen-vel                 = no
+```
+
+Generate the production input:
+
+```bash
+gmx grompp \
+-f md.mdp \
+-c npt.gro \
+-t npt.cpt \
+-p topol.top \
+-o md.tpr
+```
+
+Run the 100 ns simulation:
+
+```bash
+gmx mdrun \
+-deffnm md \
+-ntmpi 1 \
+-ntomp 8
+```
+
+The simulation uses a 2 fs timestep:
+
+```text
+100 ns = 100,000 ps
+
+100,000 / 0.002 = 50,000,000 steps
+```
+
+## 12. Trajectory Analysis
+
+### 12.1. RMSD
+
+```bash
+gmx rms \
+-s md.tpr \
+-f md.xtc \
+-o rmsd.xvg \
+-tu ns
+```
+
+Select the appropriate fitting and calculation groups.
+
+### 12.2. RMSF
+
+```bash
+gmx rmsf \
+-s md.tpr \
+-f md.xtc \
+-o rmsf.xvg \
+-res
+```
+
+Select the C-alpha or Backbone group.
+
+### 12.3. Radius of Gyration
+
+```bash
+gmx gyrate \
+-s md.tpr \
+-f md.xtc \
+-o gyrate.xvg
+```
+
+### 12.4. Hydrogen Bond Analysis
+
+```bash
+gmx hbond \
+-s md.tpr \
+-f md.xtc \
+-num hydrogen_bonds.xvg
+```
+
+Select the appropriate groups for the intended analysis.
+
+### 12.5. Trajectory Check
+
+```bash
+gmx check -f md.xtc
+```
+
+## 13. Output Files
+
+| File | Description |
+|---|---|
+| `topol.top` | System topology |
+| `processed.gro` | Processed protein structure |
+| `em.gro` | Energy-minimized structure |
+| `nvt.gro` | NVT-equilibrated structure |
+| `npt.gro` | NPT-equilibrated structure |
+| `md.xtc` | Production trajectory |
+| `md.edr` | Energy data |
+| `md.log` | Simulation log |
+| `rmsd.xvg` | RMSD data |
+| `rmsf.xvg` | RMSF data |
+| `gyrate.xvg` | Radius of gyration data |
+| `hydrogen_bonds.xvg` | Hydrogen-bond data |
+
+## 14. Reference
+
+- GROMACS 2025.3 documentation: https://manual.gromacs.org/documentation/2025.3/
