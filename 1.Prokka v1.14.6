@@ -1,0 +1,116 @@
+# Prokka v1.14.6 – Genome Annotation
+
+## Description
+
+Prokka is a bacterial genome annotation tool used to identify coding sequences, tRNAs, rRNAs, and other genomic features. It generates annotated files in GFF, GenBank, FASTA, and tabular formats.
+
+Prokka v1.14.6 was used to annotate the *Providencia stuartii* genome assemblies before pan-genome analysis.
+
+## 1. Installation
+
+```bash
+mamba create -n prokka_env -c conda-forge -c bioconda prokka=1.14.6
+conda activate prokka_env
+
+prokka --version
+```
+
+## 2. Input Preparation
+
+Organize the genome assemblies in a directory:
+
+```text
+Providencia_Project/
+├── Genomes/
+│   ├── Genome_01.fna
+│   ├── Genome_02.fna
+│   └── ...
+└── Prokka_Results/
+```
+
+Create the output directory:
+
+```bash
+mkdir -p Prokka_Results
+```
+
+## 3. Annotation of a Single Genome
+
+```bash
+prokka \
+--outdir Prokka_Results/Genome_01 \
+--prefix Genome_01 \
+--kingdom Bacteria \
+--genus Providencia \
+--species stuartii \
+--strain Genome_01 \
+--gram neg \
+--cpus 8 \
+Genomes/Genome_01.fna
+```
+
+## 4. Batch Annotation of All Genomes
+
+Create a script:
+
+```bash
+nano run_prokka.sh
+```
+
+Add the following commands:
+
+```bash
+#!/bin/bash
+
+INPUT_DIR="Genomes"
+OUTPUT_DIR="Prokka_Results"
+
+mkdir -p "$OUTPUT_DIR"
+
+for genome in "$INPUT_DIR"/*.fna
+do
+    sample=$(basename "$genome" .fna)
+
+    echo "Annotating $sample"
+
+    prokka \
+    --outdir "$OUTPUT_DIR/$sample" \
+    --prefix "$sample" \
+    --kingdom Bacteria \
+    --genus Providencia \
+    --species stuartii \
+    --strain "$sample" \
+    --gram neg \
+    --cpus 8 \
+    "$genome"
+
+done
+
+echo "Genome annotation completed."
+```
+
+Run the script:
+
+```bash
+chmod +x run_prokka.sh
+./run_prokka.sh
+```
+
+## 5. Output Files
+
+| File | Description |
+|---|---|
+| `.gff` | Annotated genomic features |
+| `.gbk` | GenBank annotation |
+| `.faa` | Predicted protein sequences |
+| `.ffn` | Predicted gene nucleotide sequences |
+| `.fna` | Genomic nucleotide sequences |
+| `.tsv` | Tabular annotation |
+| `.txt` | Annotation statistics |
+| `.log` | Execution log |
+
+The generated GFF files are used as input for the subsequent Roary pan-genome analysis.
+
+## 6. References
+
+- Prokka: https://github.com/tseemann/prokka
