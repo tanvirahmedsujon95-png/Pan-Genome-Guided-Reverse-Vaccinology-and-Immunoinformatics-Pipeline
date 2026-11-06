@@ -1,0 +1,185 @@
+# Roary v3.11.2 – Pan-Genome Analysis
+
+## Description
+
+Roary is a bacterial pan-genome analysis pipeline that identifies homologous gene clusters across multiple annotated genomes. It classifies genes according to their distribution among the analyzed isolates.
+
+Roary v3.11.2 was used to analyze 31 *Providencia stuartii* genomes with a minimum BLASTp identity threshold of 95% and a core-genome threshold of 99%.
+
+## 1. Installation
+
+```bash
+mamba create -n roary_env -c conda-forge -c bioconda roary=3.11.2
+conda activate roary_env
+
+roary -h
+```
+
+## 2. Input Preparation
+
+Roary requires Prokka-generated GFF files.
+
+```bash
+mkdir -p Roary_Input
+mkdir -p Roary_Output
+```
+
+Copy all Prokka annotation files:
+
+```bash
+find Prokka_Results \
+-type f -name "*.gff" \
+-exec cp {} Roary_Input/ \;
+```
+
+Check the number of input genomes:
+
+```bash
+ls Roary_Input/*.gff | wc -l
+```
+
+The expected number of input files is 31.
+
+Directory structure:
+
+```text
+Roary_Input/
+├── Genome_01.gff
+├── Genome_02.gff
+├── Genome_03.gff
+└── ...
+```
+
+## 3. Run Roary
+
+```bash
+roary \
+-e \
+-n \
+-v \
+-i 95 \
+-cd 99 \
+-p 16 \
+-f Roary_Output \
+Roary_Input/*.gff
+```
+
+### Parameters
+
+| Parameter | Description |
+|---|---|
+| `-e` | Generate a core-gene alignment |
+| `-n` | Use MAFFT for core-gene alignment |
+| `-v` | Enable verbose output |
+| `-i 95` | Minimum BLASTp identity of 95% |
+| `-cd 99` | Core-gene definition based on 99% isolate presence |
+| `-p 16` | Number of processing threads |
+| `-f` | Output directory |
+
+## 4. Important Output Files
+
+| File | Description |
+|---|---|
+| `gene_presence_absence.csv` | Gene presence/absence matrix |
+| `gene_presence_absence.Rtab` | Binary presence/absence matrix |
+| `summary_statistics.txt` | Pan-genome statistics |
+| `core_gene_alignment.aln` | Core-gene multiple sequence alignment |
+| `pan_genome_reference.fa` | Representative gene-cluster sequences |
+| `accessory_binary_genes.fa` | Accessory gene sequences |
+
+## 5. Gene Classification
+
+The Roary presence/absence matrix can be used to classify gene clusters according to their distribution across the 31 genomes.
+
+Install pandas:
+
+```bash
+pip install pandas
+```
+
+Create a Python script:
+
+```bash
+nano classify_pan_genome.py
+```
+
+Use the following code:
+
+```python
+import pandas as pd
+
+# Load Roary output
+df = pd.read_csv(
+    "Roary_Output/gene_presence_absence.csv",
+    low_memory=False
+)
+
+# Replace these names with the exact genome column names
+# from gene_presence_absence.csv
+genomes = [
+    "Genome_01",
+    "Genome_02",
+    "Genome_03",
+    # Add the remaining 28 genome names
+]
+
+# Check genome columns
+missing = [g for g in genomes if g not in df.columns]
+
+if missing:
+    raise ValueError(f"Missing genome columns: {missing}")
+
+# Calculate gene presence
+presence = df[genomes].notna() & (df[genomes] != "")
+
+df["Genome_Count"] = presence.sum(axis=1)
+
+df["Presence_Percentage"] = (
+    df["Genome_Count"] / len(genomes)
+) * 100
+
+# Classify gene clusters
+def classify_gene(value):
+    if value >= 99:
+        return "Core"
+    elif value >= 95:
+        return "Soft_Core"
+    elif value >= 15:
+        return "Shell"
+    else:
+        return "Cloud"
+
+df["Gene_Category"] = df["Presence_Percentage"].apply(
+    classify_gene
+)
+
+# Export results
+df.to_csv(
+    "Roary_Output/categorized_pan_genome.csv",
+    index=False
+)
+
+print(df["Gene_Category"].value_counts())
+print("Classification completed.")
+```
+
+Run:
+
+```bash
+python classify_pan_genome.py
+```
+
+### Gene Category Definitions
+
+| Category | Genome presence |
+|---|---|
+| Core | 99–100% |
+| Soft core | 95–less than 99% |
+| Shell | 15–less than 95% |
+| Cloud | Less than 15% |
+
+The genome identifiers in the Python script must match the corresponding columns in the Roary CSV file.
+
+## 6. Reference
+
+- Roary: https://github.com/sanger-pathogens/Roary
