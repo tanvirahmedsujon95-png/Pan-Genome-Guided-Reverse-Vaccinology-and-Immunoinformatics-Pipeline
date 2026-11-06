@@ -43,8 +43,6 @@ This repository contains the methodology tutorial, relevant computational resour
 ## Limitations
 All vaccine properties and biological interactions evaluated in this study are computational predictions. Experimental validation is necessary to establish immunogenicity, safety, and protective efficacy.
 
-## Citation
-If you use this workflow or its materials, please cite the associated research article:
 
 **[Insert the final published article citation, DOI, or preprint link here.]**
 
